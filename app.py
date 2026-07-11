@@ -1,398 +1,436 @@
 """
-AI Based Structural Crack and Defect Detection
-Team: Safna Firoz, Jisa Asha Joseph, Ron Geo Roy, Vaishnav Shibu
-Supervisor: Afia S. Hameed, Dept. of CE, Saintgits College of Engineering
+AI-Based Structural Crack and Defect Detection System
+Flask Web Application — Dual Model Version
 
-Flask backend. Handles image upload, runs YOLOv8 inference when a trained
-model (crack_model.pt) is available, otherwise falls back to an OpenCV
-heuristic "demo mode" so the app is fully functional before training
-finishes. Returns bounding boxes, severity score, an annotated image, and a
-causes / prevention / repair / consequences report pulled from the
-CRACK_ANALYSIS knowledge base.
+Models:
+  crack_model.pt  → pothole detection
+  crack_model2.pt → Crack-alligator, Crack-long, Crack-trans, pothole
+
+Run: python app.py  →  open http://localhost:5000
 """
 
-import base64
-import io
-import os
-
-import cv2
+import os, io, base64, json
+from pathlib import Path
+from flask import Flask, render_template, request, jsonify
 import numpy as np
-from flask import Flask, jsonify, render_template, request
+import cv2
 
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
+# ── Load both models ──────────────────────────────────────────────────
+try:
+    from ultralytics import YOLO
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "crack_model.pt")
-
-# ---------------------------------------------------------------------------
-# Class definitions (aligned with RDD2022 damage classes)
-# ---------------------------------------------------------------------------
-CLASS_NAMES = {
-    0: "Longitudinal Crack",   # D00
-    1: "Transverse Crack",     # D10
-    2: "Alligator Crack",      # D20
-    3: "Pothole",              # D40
-}
-
-# BGR colours for cv2.rectangle / cv2.putText, one per class
-CLASS_COLORS = {
-    "Longitudinal Crack": (0, 255, 170),   # neon green
-    "Transverse Crack":   (255, 200, 0),   # amber
-    "Alligator Crack":    (0, 140, 255),   # orange
-    "Pothole":            (0, 0, 255),     # red
-}
-
-CRACK_ANALYSIS = {
-    "Longitudinal Crack": {
-        "causes": [
-            "Fatigue of the road surface from repeated traffic loading along the direction of travel.",
-            "Poor construction joints between paving lanes.",
-            "Base or sub-base settlement running parallel to the pavement edge.",
-            "Shrinkage of the asphalt binder over time.",
-        ],
-        "prevention": [
-            "Ensure proper compaction of base and sub-base layers during construction.",
-            "Use quality control checks on paving lane joints.",
-            "Apply routine crack sealing before cracks widen.",
-            "Monitor traffic loads and enforce axle-load limits.",
-        ],
-        "repair": [
-            "Clean the crack of debris and vegetation.",
-            "Apply hot-poured rubberised crack sealant for cracks under 10 mm.",
-            "For wider cracks, mill and overlay the affected strip.",
-            "Re-compact the base layer if settlement is confirmed.",
-        ],
-        "consequences": [
-            "Water infiltration weakens the base layer, accelerating pavement failure.",
-            "Crack widens under continued traffic, eventually forming a pothole.",
-            "Reduced ride quality and increased vehicle wear, especially for two-wheelers.",
-            "Full-depth reconstruction becomes necessary if untreated for multiple seasons.",
-        ],
-    },
-    "Transverse Crack": {
-        "causes": [
-            "Thermal contraction of the asphalt in fluctuating temperatures.",
-            "Reflective cracking from an underlying concrete slab joint.",
-            "Aging and embrittlement of the asphalt binder.",
-            "Poor mix design with insufficient binder content.",
-        ],
-        "prevention": [
-            "Use polymer-modified binders that resist thermal cracking.",
-            "Apply a stress-absorbing membrane interlayer over slab joints.",
-            "Seal cracks early during routine maintenance cycles.",
-            "Specify mix designs suited to local climate extremes.",
-        ],
-        "repair": [
-            "Rout and seal the crack with a flexible sealant.",
-            "Apply a fibre-reinforced overlay for widespread transverse cracking.",
-            "Address underlying joint issues if reflective cracking is confirmed.",
-        ],
-        "consequences": [
-            "Moisture ingress causes stripping of the asphalt binder from aggregate.",
-            "Cracks propagate and interconnect, forming block cracking patterns.",
-            "Ride comfort and vehicle handling deteriorate, raising accident risk.",
-        ],
-    },
-    "Alligator Crack": {
-        "causes": [
-            "Structural fatigue from repeated heavy axle loads exceeding pavement design capacity.",
-            "Inadequate pavement thickness for the traffic it carries.",
-            "Poor drainage leading to sustained sub-grade weakening.",
-            "Loss of base support from long-term water infiltration.",
-        ],
-        "prevention": [
-            "Design pavement thickness according to projected traffic loads.",
-            "Maintain effective surface and sub-surface drainage.",
-            "Carry out periodic structural (deflection) surveys on high-traffic roads.",
-            "Restrict overloaded vehicles on vulnerable stretches.",
-        ],
-        "repair": [
-            "Full-depth patching of the affected area is required; sealing alone is insufficient.",
-            "Excavate and reconstruct the base if sub-grade failure is present.",
-            "Improve drainage around the repaired section before resurfacing.",
-        ],
-        "consequences": [
-            "Rapid progression to potholes once fatigue cracking is present.",
-            "Loss of structural integrity across the whole pavement section.",
-            "Significantly higher repair cost if reconstruction is delayed.",
-            "Elevated risk of vehicle damage and accidents, especially for motorcycles.",
-        ],
-    },
-    "Pothole": {
-        "causes": [
-            "Water infiltration through existing cracks that weakens the base under traffic loading.",
-            "Freeze-thaw and monsoon-driven wet-dry cycles accelerating material loss.",
-            "Poor original construction quality or compaction.",
-            "Delayed maintenance of earlier-stage cracking.",
-        ],
-        "prevention": [
-            "Seal cracks promptly before water can penetrate the base.",
-            "Ensure adequate camber and drainage so water does not pool on the surface.",
-            "Carry out proactive resurfacing on roads showing early fatigue cracking.",
-        ],
-        "repair": [
-            "Clean loose material from the pothole and square off the edges.",
-            "Apply tack coat and compact hot-mix or cold-mix asphalt patch in layers.",
-            "For recurring potholes, investigate and correct the underlying drainage issue.",
-        ],
-        "consequences": [
-            "Immediate risk of vehicle damage (tyres, suspension, alignment) and motorcycle accidents.",
-            "Rapid enlargement during monsoon season as edges erode further.",
-            "High-cost emergency repairs versus low-cost preventive sealing.",
-            "Liability and safety risk for municipal authorities if left unaddressed.",
-        ],
-    },
-}
-
-# ---------------------------------------------------------------------------
-# Optional YOLOv8 model (production path)
-# ---------------------------------------------------------------------------
-_model = None
-_model_load_error = None
-
-if os.path.exists(MODEL_PATH):
-    try:
-        from ultralytics import YOLO
-
-        _model = YOLO(MODEL_PATH)
-    except Exception as exc:  # ultralytics missing, or model file invalid
-        _model_load_error = str(exc)
-        _model = None
-
-
-def run_model_analysis(img_bytes):
-    """
-    INPUT: raw image bytes from the HTTP upload.
-    Decodes the image, runs detection (trained YOLOv8 model if available,
-    otherwise an OpenCV heuristic demo pipeline), annotates the image, and
-    returns a JSON-serialisable dict.
-    """
-    np_arr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Could not decode image. Please upload a JPG, PNG, or WEBP file.")
-
-    if _model is not None:
-        detections = _run_yolo_inference(img)
-        mode = "model"
+    # Model 1 — pothole detection (your first model)
+    MODEL1_PATH = Path("crack_model.pt")
+    model1      = YOLO(str(MODEL1_PATH)) if MODEL1_PATH.exists() else None
+    if model1:
+        print(f"✅ Model 1 loaded: {MODEL1_PATH}  (pothole)")
     else:
-        detections = _run_demo_heuristic(img)
-        mode = "demo"
+        print(f"⚠️  crack_model.pt not found — skipping Model 1")
 
-    annotated = _annotate_image(img.copy(), detections)
-    _, buf = cv2.imencode(".jpg", annotated)
-    b64_image = base64.b64encode(buf).decode("utf-8")
+    # Model 2 — crack types (your new model best(1).pt)
+    # Rename best(1).pt to crack_model2.pt in your folder
+    MODEL2_PATH = Path("crack_model2.pt")
+    model2      = YOLO(str(MODEL2_PATH)) if MODEL2_PATH.exists() else None
+    if model2:
+        print(f"✅ Model 2 loaded: {MODEL2_PATH}  (alligator, long, trans, pothole)")
+    else:
+        print(f"⚠️  crack_model2.pt not found — rename best(1).pt to crack_model2.pt")
 
-    severity = _compute_severity(detections, img.shape)
-    report = _build_report(detections)
+    USE_MODEL = model1 is not None or model2 is not None
 
+except ImportError:
+    model1 = model2 = None
+    USE_MODEL = False
+    print("⚠️  ultralytics not installed — demo mode")
+
+# ── Class names for each model ────────────────────────────────────────
+MODEL1_CLASSES = ["pothole"]
+MODEL2_CLASSES = ["Crack-alligator", "Crack-long", "Crack-trans", "pothole"]
+
+# ── Full analysis knowledge base ──────────────────────────────────────
+# Keys must match the class names from both models (case-insensitive lookup)
+CRACK_ANALYSIS = {
+    "pothole": {
+        "full_name"   : "Road Pothole",
+        "severity"    : "Critical",
+        "color"       : "#FF2222",
+        "icon"        : "🔴",
+        "causes"      : [
+            "Repeated traffic overloading beyond pavement design capacity",
+            "Water infiltration through surface cracks eroding the sub-base",
+            "Poor drainage leading to prolonged water saturation",
+            "Aging and oxidation of bituminous binder material",
+            "Freeze-thaw expansion cycles breaking apart asphalt layers",
+        ],
+        "prevention"  : [
+            "Seal surface cracks immediately before water penetrates",
+            "Improve road drainage — clear kerb outlets and install edge drains",
+            "Enforce axle load limits on commercial vehicles",
+            "Schedule preventive resurfacing every 5–7 years",
+            "Use polymer-modified bitumen (PMB) for longer service life",
+        ],
+        "repair"      : [
+            "Clear all debris, water, and loose material from the pothole",
+            "Saw-cut edges square to create a clean repair boundary",
+            "Apply bituminous tack coat to all cut surfaces",
+            "Fill with hot-mix asphalt in 50mm compacted layers",
+            "Compact firmly with a vibratory roller or plate compactor",
+            "Apply surface sealant to prevent future water ingress",
+        ],
+        "consequences": [
+            "Vehicle tyre and suspension damage — avg. ₹15,000–₹40,000 per incident",
+            "High risk of motorcycle and bicycle accidents",
+            "Size doubles within 3–6 months under continued traffic loading",
+            "Progressive structural failure of the full road pavement",
+        ],
+        "urgency"     : "Emergency — repair within 24–72 hours",
+    },
+    "crack-alligator": {
+        "full_name"   : "Alligator (Fatigue) Cracking",
+        "severity"    : "Critical",
+        "color"       : "#CC0000",
+        "icon"        : "🔴",
+        "causes"      : [
+            "Fatigue failure from repeated traffic loading beyond design life",
+            "Pavement structural thickness insufficient for actual traffic volume",
+            "Weak or moisture-saturated subgrade reducing structural capacity",
+            "Excessive overloading by heavy commercial and goods vehicles",
+            "Absence of structural maintenance during service life",
+        ],
+        "prevention"  : [
+            "Conduct structural pavement design using accurate traffic count data",
+            "Ensure proper drainage to protect subgrade bearing capacity",
+            "Monitor road deflection with Falling Weight Deflectometer annually",
+            "Plan overlay before fatigue cracking reaches the surface",
+            "Enforce vehicle overloading regulations strictly",
+        ],
+        "repair"      : [
+            "Perform full-depth reclamation — remove and recycle the failed layer",
+            "Investigate and address subgrade moisture if present",
+            "Reconstruct with structurally adequate layer thicknesses",
+            "Apply geogrid reinforcement between layers to prevent recurrence",
+            "Consider recycled asphalt pavement (RAP) for cost and sustainability",
+        ],
+        "consequences": [
+            "Imminent complete structural collapse of road surface",
+            "Severe vehicle damage and very high accident risk",
+            "Full reconstruction cost is 20–50× higher than preventive maintenance",
+            "Road becomes impassable during heavy rainfall",
+        ],
+        "urgency"     : "Emergency — immediate structural repair required",
+    },
+    "crack-long": {
+        "full_name"   : "Longitudinal Crack",
+        "severity"    : "High",
+        "color"       : "#FF8800",
+        "icon"        : "🟠",
+        "causes"      : [
+            "Reflective cracking upward from joints in underlying base layers",
+            "Differential settlement from uneven subgrade compaction",
+            "Asphalt layer shrinkage during thermal cooling overnight",
+            "Lane-edge support failure due to weak or eroded road shoulders",
+            "Excessive tensile stress from heavy vehicle channelisation",
+        ],
+        "prevention"  : [
+            "Ensure uniform compaction of all sub-layers during construction",
+            "Install geosynthetic interlayer fabric to suppress reflective cracking",
+            "Maintain adequate road shoulders for lateral structural support",
+            "Apply annual fog seal or chip seal for UV and moisture protection",
+        ],
+        "repair"      : [
+            "Route the crack to create uniform walls and remove debris",
+            "Clean thoroughly with compressed air",
+            "Apply hot-pour rubberised crack filler to full depth",
+            "Sand the surface before filler sets to restore skid resistance",
+            "For cracks wider than 25mm — saw-cut and patch with cold-mix asphalt",
+        ],
+        "consequences": [
+            "Water infiltration causing pothole formation in 1–2 monsoon seasons",
+            "Progressive crack widening under traffic and thermal cycling",
+            "Structural weakening of base and subgrade layers",
+        ],
+        "urgency"     : "High priority — repair within 2 weeks",
+    },
+    "crack-trans": {
+        "full_name"   : "Transverse Crack",
+        "severity"    : "Medium",
+        "color"       : "#FFCC00",
+        "icon"        : "🟡",
+        "causes"      : [
+            "Thermal expansion and contraction stress across the road width",
+            "Low-temperature hardening (embrittlement) of aged asphalt binder",
+            "Reflection cracking from transverse joints in concrete base",
+            "Asphalt layer shrinkage during initial curing period",
+        ],
+        "prevention"  : [
+            "Specify polymer-modified binder with wider temperature performance range",
+            "Use PG binder grade appropriate for local climate extremes",
+            "Include transverse crack sealing in routine maintenance programme",
+            "Monitor Pavement Condition Index (PCI) annually",
+        ],
+        "repair"      : [
+            "Clean crack with compressed air to remove debris and moisture",
+            "Apply rubberised crack sealant for cracks narrower than 19mm",
+            "For wider cracks — clean, tack coat, and surface patch",
+            "Inspect adjacent area for hidden sub-surface damage",
+        ],
+        "consequences": [
+            "Water penetration causing sub-base saturation and softening",
+            "Rapid deterioration into potholes during monsoon season",
+            "Reduced riding quality increasing vehicle operating costs by 10–20%",
+        ],
+        "urgency"     : "Moderate — repair within 1 month",
+    },
+}
+
+SEV_ORDER = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+
+
+def get_analysis(class_name):
+    """Look up analysis by class name — case-insensitive."""
+    key = class_name.lower().replace("_", "-")
+    # direct match
+    if key in CRACK_ANALYSIS:
+        return CRACK_ANALYSIS[key]
+    # partial match fallback
+    for k in CRACK_ANALYSIS:
+        if k in key or key in k:
+            return CRACK_ANALYSIS[k]
+    # default
     return {
-        "mode": mode,
-        "detections": detections,
-        "num_detections": len(detections),
-        "severity": severity,
-        "annotated_image": b64_image,
-        "report": report,
+        "full_name"   : class_name.replace("-", " ").title(),
+        "severity"    : "Medium",
+        "color"       : "#888888",
+        "icon"        : "⚪",
+        "causes"      : ["Road surface deterioration detected"],
+        "prevention"  : ["Schedule inspection and maintenance"],
+        "repair"      : ["Consult a road engineer for repair assessment"],
+        "consequences": ["May worsen if left untreated"],
+        "urgency"     : "Schedule inspection",
     }
 
 
-def _run_yolo_inference(img):
-    """Real inference path using a trained crack_model.pt (YOLOv8)."""
-    results = _model.predict(img, conf=0.25, verbose=False)
-    detections = []
-    for box in results[0].boxes:
-        cls = int(box.cls)
-        conf = float(box.conf)
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-        class_name = CLASS_NAMES.get(cls, "Unknown Defect")
-        detections.append(
-            {
-                "class": class_name,
-                "confidence": round(conf, 3),
-                "bbox": [round(x1), round(y1), round(x2), round(y2)],
-            }
-        )
-    return detections
-
-
-def _run_demo_heuristic(img):
+def run_inference(img_array):
     """
-    Demo-mode fallback using classical OpenCV image processing so the web
-    app is fully usable before the YOLOv8 model has finished training.
-
-    Pipeline: greyscale -> blur -> Canny edges -> contour extraction ->
-    geometric heuristics (aspect ratio, area, elongation) to approximate
-    a defect class for each candidate region.
+    Run both models on the image.
+    Merge results, remove duplicate detections of the same area.
     """
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 40, 120)
-    kernel = np.ones((3, 3), np.uint8)
-    edges = cv2.dilate(edges, kernel, iterations=1)
+    all_detections = []
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # ── Model 1 — pothole ──────────────────────────────────────────────
+    if model1:
+        res = model1.predict(img_array, conf=0.25, verbose=False)[0]
+        if res.boxes is not None:
+            for box in res.boxes:
+                cls_id = int(box.cls)
+                conf   = float(box.conf)
+                name   = MODEL1_CLASSES[cls_id] if cls_id < len(MODEL1_CLASSES) else "pothole"
+                info   = get_analysis(name)
+                all_detections.append({
+                    "class"       : name,
+                    "full_name"   : info["full_name"],
+                    "confidence"  : round(conf * 100, 1),
+                    "bbox"        : [int(v) for v in box.xyxy[0].tolist()],
+                    "severity"    : info["severity"],
+                    "urgency"     : info["urgency"],
+                    "color"       : info["color"],
+                    "icon"        : info["icon"],
+                    "causes"      : info["causes"],
+                    "prevention"  : info["prevention"],
+                    "repair"      : info["repair"],
+                    "consequences": info["consequences"],
+                    "source"      : "model1",
+                })
 
-    min_area = (h * w) * 0.0015
-    candidates = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area < min_area:
-            continue
-        x, y, bw, bh = cv2.boundingRect(c)
-        candidates.append((area, x, y, bw, bh, c))
+    # ── Model 2 — crack types ──────────────────────────────────────────
+    if model2:
+        res = model2.predict(img_array, conf=0.25, verbose=False)[0]
+        if res.boxes is not None:
+            for box in res.boxes:
+                cls_id = int(box.cls)
+                conf   = float(box.conf)
+                name   = MODEL2_CLASSES[cls_id] if cls_id < len(MODEL2_CLASSES) else "unknown"
+                info   = get_analysis(name)
+                all_detections.append({
+                    "class"       : name,
+                    "full_name"   : info["full_name"],
+                    "confidence"  : round(conf * 100, 1),
+                    "bbox"        : [int(v) for v in box.xyxy[0].tolist()],
+                    "severity"    : info["severity"],
+                    "urgency"     : info["urgency"],
+                    "color"       : info["color"],
+                    "icon"        : info["icon"],
+                    "causes"      : info["causes"],
+                    "prevention"  : info["prevention"],
+                    "repair"      : info["repair"],
+                    "consequences": info["consequences"],
+                    "source"      : "model2",
+                })
 
-    candidates.sort(key=lambda t: t[0], reverse=True)
-    candidates = candidates[:6]  # keep the most prominent regions
+    # ── Remove duplicate pothole detections (keep highest confidence) ──
+    # Both models detect potholes — keep only the one with higher confidence
+    potholes = [d for d in all_detections if "pothole" in d["class"].lower()]
+    others   = [d for d in all_detections if "pothole" not in d["class"].lower()]
 
-    detections = []
-    for area, x, y, bw, bh, c in candidates:
-        aspect = bw / float(bh) if bh else 1.0
-        fill_ratio = area / float(bw * bh) if bw * bh else 0
-        edge_density = area / float(h * w)
+    if len(potholes) > 1:
+        # Check IoU — if two pothole boxes overlap a lot, keep highest conf
+        def iou(a, b):
+            x1 = max(a[0], b[0]); y1 = max(a[1], b[1])
+            x2 = min(a[2], b[2]); y2 = min(a[3], b[3])
+            inter = max(0, x2-x1) * max(0, y2-y1)
+            if inter == 0:
+                return 0
+            area_a = (a[2]-a[0]) * (a[3]-a[1])
+            area_b = (b[2]-b[0]) * (b[3]-b[1])
+            return inter / (area_a + area_b - inter)
 
-        if fill_ratio > 0.55 and 0.6 < aspect < 1.7:
-            class_name = "Pothole"
-        elif fill_ratio > 0.35 and area > min_area * 4:
-            class_name = "Alligator Crack"
-        elif aspect >= 1.8:
-            class_name = "Transverse Crack"
-        else:
-            class_name = "Longitudinal Crack"
+        kept = []
+        for p in sorted(potholes, key=lambda x: x["confidence"], reverse=True):
+            if not any(iou(p["bbox"], k["bbox"]) > 0.5 for k in kept):
+                kept.append(p)
+        potholes = kept
 
-        # Pseudo-confidence from edge density and fill ratio; demo mode only.
-        confidence = float(np.clip(0.4 + fill_ratio * 0.3 + edge_density * 8, 0.35, 0.93))
+    all_detections = others + potholes
 
-        detections.append(
-            {
-                "class": class_name,
-                "confidence": round(confidence, 3),
-                "bbox": [x, y, x + bw, y + bh],
-            }
-        )
+    # Sort by severity
+    all_detections.sort(
+        key=lambda d: SEV_ORDER.get(d["severity"], 0),
+        reverse=True
+    )
 
-    return detections
-
-
-def _annotate_image(img, detections):
-    for det in detections:
-        x1, y1, x2, y2 = det["bbox"]
-        color = CLASS_COLORS.get(det["class"], (0, 255, 170))
-        cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness=3)
-        label = f'{det["class"]} {det["confidence"] * 100:.1f}%'
-        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-        cv2.rectangle(img, (x1, max(0, y1 - th - 10)), (x1 + tw + 6, y1), color, -1)
-        cv2.putText(
-            img, label, (x1 + 3, max(15, y1 - 6)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (10, 10, 10), 2, cv2.LINE_AA,
-        )
-    return img
+    return all_detections
 
 
-def _compute_severity(detections, img_shape):
-    if not detections:
-        return {"score": 0, "category": "None", "urgency": "No defects detected."}
+def demo_analysis(img_array):
+    """Fallback when no models are loaded — basic image heuristics."""
+    gray   = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+    edges  = cv2.Canny(gray, 50, 150)
+    edge_d = np.sum(edges > 0) / edges.size
+    dark_r = np.sum(gray < 60)  / gray.size
+    h, w   = img_array.shape[:2]
 
-    h, w = img_shape[:2]
-    frame_area = h * w
-    weights = {"Pothole": 1.0, "Alligator Crack": 0.85, "Transverse Crack": 0.55, "Longitudinal Crack": 0.45}
-
-    worst = 0.0
-    for det in detections:
-        x1, y1, x2, y2 = det["bbox"]
-        box_area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / float(frame_area)
-        w_class = weights.get(det["class"], 0.5)
-        score_contrib = (0.6 * det["confidence"] + 0.4 * min(box_area_ratio * 20, 1.0)) * w_class
-        worst = max(worst, score_contrib)
-
-    score = round(worst * 10, 1)
-    if score >= 7.5:
-        category, urgency = "Critical", "Immediate repair recommended — safety risk to vehicles."
-    elif score >= 5:
-        category, urgency = "High", "Schedule repair within 1-2 weeks."
-    elif score >= 2.5:
-        category, urgency = "Moderate", "Include in the next routine maintenance cycle."
+    if dark_r > 0.12:
+        cls = "pothole"
+    elif edge_d > 0.12:
+        cls = "Crack-alligator"
+    elif edge_d > 0.07:
+        cls = "Crack-long"
     else:
-        category, urgency = "Low", "Monitor; no immediate action required."
+        cls = "Crack-trans"
 
-    return {"score": score, "category": category, "urgency": urgency}
+    info = get_analysis(cls)
+    return [{
+        "class"       : cls,
+        "full_name"   : info["full_name"],
+        "confidence"  : round(min(55 + edge_d * 200, 88), 1),
+        "bbox"        : [int(w*.15), int(h*.15), int(w*.85), int(h*.85)],
+        "severity"    : info["severity"],
+        "urgency"     : info["urgency"],
+        "color"       : info["color"],
+        "icon"        : info["icon"],
+        "causes"      : info["causes"],
+        "prevention"  : info["prevention"],
+        "repair"      : info["repair"],
+        "consequences": info["consequences"],
+        "source"      : "demo",
+    }]
 
 
-def _build_report(detections):
-    """Aggregate causes / prevention / repair / consequences for every
-    unique defect class found, so the frontend can render the tabbed
-    result panel."""
-    seen = []
+def annotate_image(img_array, detections):
+    """Draw bounding boxes and labels on the image."""
+    annotated = img_array.copy()
     for det in detections:
-        if det["class"] not in seen:
-            seen.append(det["class"])
-
-    report = {"diagnosis": [], "causes": [], "prevention": [], "repair": [], "consequences": []}
-    if not seen:
-        report["diagnosis"].append("No structural cracks or defects were detected in this image.")
-        return report
-
-    for class_name in seen:
-        info = CRACK_ANALYSIS.get(class_name)
-        report["diagnosis"].append(class_name)
-        if info:
-            report["causes"].extend(info["causes"])
-            report["prevention"].extend(info["prevention"])
-            report["repair"].extend(info["repair"])
-            report["consequences"].extend(info["consequences"])
-
-    # de-duplicate while preserving order
-    for key in ("causes", "prevention", "repair", "consequences"):
-        report[key] = list(dict.fromkeys(report[key]))
-
-    return report
+        x1, y1, x2, y2 = det["bbox"]
+        # Convert hex colour to BGR
+        hex_c  = det["color"].lstrip("#")
+        r,g,b  = int(hex_c[0:2],16), int(hex_c[2:4],16), int(hex_c[4:6],16)
+        bgr    = (b, g, r)
+        # Box
+        cv2.rectangle(annotated, (x1,y1), (x2,y2), bgr, 3)
+        # Label background
+        label  = f"{det['icon']} {det['full_name']}  {det['confidence']}%"
+        (tw,th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        cv2.rectangle(annotated, (x1, y1-th-12), (x1+tw+10, y1), bgr, -1)
+        cv2.putText(annotated, label, (x1+5, y1-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 2)
+    return annotated
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+# ── Flask app ──────────────────────────────────────────────────────────
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
+
+
 @app.route("/")
-def home():
-    return render_template("index.html")
+def index():
+    models_status = {
+        "model1": model1 is not None,
+        "model2": model2 is not None,
+    }
+    return render_template("index.html",
+                           use_model=USE_MODEL,
+                           models=models_status)
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
     if "image" not in request.files:
-        return jsonify({"error": "No image file received."}), 400
+        return jsonify({"error": "No image uploaded"}), 400
 
     file = request.files["image"]
     if file.filename == "":
-        return jsonify({"error": "No file selected."}), 400
+        return jsonify({"error": "No file selected"}), 400
 
-    try:
-        img_bytes = file.read()
-        result = run_model_analysis(img_bytes)
-        return jsonify(result)
-    except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400
-    except Exception as exc:  # pragma: no cover
-        return jsonify({"error": f"Analysis failed: {exc}"}), 500
+    # Read image
+    img_bytes = file.read()
+    np_arr    = np.frombuffer(img_bytes, np.uint8)
+    img       = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({"error": "Could not read image"}), 400
 
+    # Run inference
+    if USE_MODEL:
+        detections = run_inference(img)
+    else:
+        detections = demo_analysis(img)
 
-@app.route("/health")
-def health():
+    # Annotate image
+    annotated = annotate_image(img, detections)
+    _, buf    = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    img_b64   = base64.b64encode(buf).decode("utf-8")
+
+    # Overall severity
+    overall = (
+        max(detections, key=lambda d: SEV_ORDER.get(d["severity"], 0))["severity"]
+        if detections else "No defects detected"
+    )
+
     return jsonify({
-        "status": "ok",
-        "model_loaded": _model is not None,
-        "mode": "model" if _model is not None else "demo",
-        "model_load_error": _model_load_error,
+        "status"           : "success",
+        "num_detections"   : len(detections),
+        "overall_severity" : overall,
+        "detections"       : detections,
+        "annotated_image"  : img_b64,
+        "models_used"      : {
+            "model1": model1 is not None,
+            "model2": model2 is not None,
+        }
     })
 
 
+
+@app.route("/status")
+def status():
+    return jsonify({
+        "model1": model1 is not None,
+        "model2": model2 is not None,
+    })
+
 if __name__ == "__main__":
-    print("=" * 60)
-    print("AI Based Structural Crack and Defect Detection")
-    if _model is not None:
-        print("Mode: PRODUCTION (crack_model.pt loaded)")
-    else:
-        print("Mode: DEMO (OpenCV heuristic fallback — no trained model found)")
-        print("Place a trained 'crack_model.pt' (YOLOv8) next to app.py to switch to production mode.")
-    print("Open http://localhost:5000 in your browser")
-    print("=" * 60)
+    print("\n" + "="*55)
+    print("  AI Crack Detection System — Dual Model")
+    print(f"  Model 1 (pothole)      : {'✅ loaded' if model1 else '❌ not found'}")
+    print(f"  Model 2 (crack types)  : {'✅ loaded' if model2 else '❌ not found'}")
+    print("  Open: http://localhost:5000")
+    print("="*55 + "\n")
     app.run(debug=True, host="0.0.0.0", port=5000)

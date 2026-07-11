@@ -3,388 +3,120 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Structural Crack &amp; Defect Detection</title>
+<title>AI Crack Detection</title>
 <style>
-  :root {
-    --bg: #0a0f0d;
-    --panel: #101713;
-    --panel-border: #1f3d2e;
-    --neon: #39ff9d;
-    --neon-dim: #1f9d63;
-    --text: #d9fbe8;
-    --text-dim: #7fa693;
-    --danger: #ff4d5e;
-    --warn: #ffb84d;
-    --ok: #39ff9d;
-  }
-
-  * { box-sizing: border-box; }
-
-  body {
-    margin: 0;
-    background: radial-gradient(circle at top, #0d1712 0%, #060a08 70%);
-    color: var(--text);
-    font-family: "Segoe UI", Roboto, -apple-system, sans-serif;
-    min-height: 100vh;
-  }
-
-  header {
-    padding: 28px 24px 18px;
-    text-align: center;
-    border-bottom: 1px solid var(--panel-border);
-  }
-
-  header h1 {
-    margin: 0 0 6px;
-    font-size: 1.7rem;
-    letter-spacing: 0.5px;
-    color: var(--neon);
-    text-shadow: 0 0 12px rgba(57, 255, 157, 0.45);
-  }
-
-  header p {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 0.9rem;
-  }
-
-  .team {
-    margin-top: 8px;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-  }
-
-  main {
-    max-width: 980px;
-    margin: 0 auto;
-    padding: 28px 20px 60px;
-  }
-
-  #dropzone {
-    border: 2px dashed var(--neon-dim);
-    border-radius: 14px;
-    padding: 48px 20px;
-    text-align: center;
-    background: var(--panel);
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-  }
-
-  #dropzone.dragover {
-    border-color: var(--neon);
-    background: #0f221a;
-  }
-
-  #dropzone svg { width: 46px; height: 46px; fill: var(--neon); opacity: 0.85; }
-
-  #dropzone h3 { margin: 14px 0 4px; color: var(--text); font-weight: 600; }
-  #dropzone p { margin: 0; color: var(--text-dim); font-size: 0.85rem; }
-
-  #fileInput { display: none; }
-
-  #previewWrap { margin-top: 18px; display: none; text-align: center; }
-  #previewWrap img { max-width: 100%; max-height: 320px; border-radius: 10px; border: 1px solid var(--panel-border); }
-
-  .btn {
-    margin-top: 16px;
-    background: var(--neon);
-    color: #04150d;
-    border: none;
-    padding: 12px 28px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 0.95rem;
-    cursor: pointer;
-    letter-spacing: 0.3px;
-    box-shadow: 0 0 18px rgba(57, 255, 157, 0.35);
-    transition: transform 0.1s, box-shadow 0.2s;
-  }
-  .btn:hover { transform: translateY(-1px); box-shadow: 0 0 26px rgba(57, 255, 157, 0.55); }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  .btn.secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--panel-border); box-shadow: none; }
-
-  .actions { text-align: center; }
-
-  #status { margin-top: 14px; text-align: center; color: var(--text-dim); font-size: 0.85rem; min-height: 18px; }
-
-  #results { display: none; margin-top: 32px; }
-
-  .result-grid {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr;
-    gap: 20px;
-  }
-  @media (max-width: 760px) { .result-grid { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 16px;
-  }
-
-  .card img { width: 100%; border-radius: 8px; display: block; }
-
-  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-  .metric {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    padding: 14px 8px;
-    text-align: center;
-  }
-  .metric .value { font-size: 1.5rem; font-weight: 700; color: var(--neon); }
-  .metric .label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
-  .metric.critical .value { color: var(--danger); }
-  .metric.high .value { color: var(--warn); }
-
-  .badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-  }
-  .badge.demo { background: rgba(255, 184, 77, 0.15); color: var(--warn); border: 1px solid var(--warn); }
-  .badge.model { background: rgba(57, 255, 157, 0.15); color: var(--neon); border: 1px solid var(--neon); }
-
-  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--panel-border); margin-bottom: 12px; flex-wrap: wrap; }
-  .tab-btn {
-    background: none; border: none; color: var(--text-dim);
-    padding: 8px 12px; font-size: 0.82rem; cursor: pointer;
-    border-bottom: 2px solid transparent;
-  }
-  .tab-btn.active { color: var(--neon); border-bottom-color: var(--neon); }
-
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-  .tab-panel ul { padding-left: 18px; margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--text); }
-  .tab-panel ul li { margin-bottom: 6px; }
-
-  .diag-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-  .diag-chip {
-    background: rgba(57, 255, 157, 0.1);
-    border: 1px solid var(--neon-dim);
-    color: var(--neon);
-    padding: 4px 10px;
-    border-radius: 16px;
-    font-size: 0.78rem;
-  }
-
-  footer { text-align: center; color: var(--text-dim); font-size: 0.72rem; padding: 20px; }
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #fff; color: #000; }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  p.sub { color: #555; font-size: 14px; margin-bottom: 24px; }
+  input[type=file] { display: block; margin-bottom: 12px; }
+  button { padding: 8px 20px; background: #000; color: #fff; border: none; cursor: pointer; font-size: 14px; }
+  button:hover { background: #333; }
+  img { max-width: 100%; margin-top: 20px; display: block; border: 1px solid #ccc; }
+  .result-block { margin-top: 24px; border-top: 2px solid #000; padding-top: 16px; }
+  .det { border: 1px solid #ccc; padding: 14px; margin-bottom: 14px; }
+  .det h3 { margin: 0 0 6px; font-size: 16px; }
+  .det .conf { font-size: 13px; color: #555; margin-bottom: 6px; }
+  .det .sev { font-weight: bold; font-size: 13px; margin-bottom: 10px; }
+  .det .sev.Critical { color: #cc0000; }
+  .det .sev.High     { color: #cc6600; }
+  .det .sev.Medium   { color: #888800; }
+  .det .sev.Low      { color: #006600; }
+  .det h4 { margin: 10px 0 4px; font-size: 13px; }
+  .det ul { margin: 0 0 0 18px; padding: 0; font-size: 13px; line-height: 1.7; }
+  .urgency { margin-top: 10px; font-size: 13px; font-weight: bold; }
+  #status { font-size: 13px; color: #555; margin-top: 8px; }
+  #error  { color: red; margin-top: 10px; font-size: 14px; }
+  .no-det { font-size: 14px; color: green; margin-top: 16px; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>AI Based Structural Crack and Defect Detection</h1>
-  <p>Upload a road surface image to detect cracks, diagnose causes, and get repair guidance.</p>
-  <div class="team">Team: Safna Firoz · Jisa Asha Joseph · Ron Geo Roy · Vaishnav Shibu &nbsp;|&nbsp; Supervisor: Afia S. Hameed, Dept. of CE, Saintgits College of Engineering</div>
-</header>
+<h1>AI Crack &amp; Defect Detection</h1>
+<p class="sub">Upload a road surface photo. The AI detects potholes, alligator cracks, longitudinal and transverse cracks.</p>
 
-<main>
-  <div id="dropzone">
-    <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4a7.49 7.49 0 0 0-7.35 6.04A5.5 5.5 0 0 0 6 20h13a5 5 0 0 0 .35-9.96zM13 13v3h-2v-3H8l4-4 4 4h-3z"/></svg>
-    <h3>Drag &amp; drop a road image here</h3>
-    <p>or click to browse &nbsp;·&nbsp; JPG, PNG, WEBP</p>
-  </div>
-  <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
+<input type="file" id="file-input" accept="image/*">
+<button onclick="analyze()">Analyze</button>
+<div id="status"></div>
+<div id="error"></div>
 
-  <div id="previewWrap">
-    <img id="previewImg" alt="Selected road image preview">
-  </div>
+<img id="result-img" style="display:none" alt="detection result">
 
-  <div class="actions">
-    <button class="btn" id="analyzeBtn" disabled>Analyze Image</button>
-    <button class="btn secondary" id="resetBtn" style="display:none;">Choose Another Image</button>
-  </div>
-  <div id="status"></div>
-
-  <section id="results">
-    <div class="result-grid">
-      <div class="card">
-        <span class="badge" id="modeBadge">MODE</span>
-        <img id="annotatedImg" alt="Annotated detection result">
-      </div>
-      <div class="card">
-        <div class="metrics">
-          <div class="metric" id="scoreMetric">
-            <div class="value" id="scoreValue">-</div>
-            <div class="label">Severity / 10</div>
-          </div>
-          <div class="metric" id="categoryMetric">
-            <div class="value" id="categoryValue">-</div>
-            <div class="label">Category</div>
-          </div>
-          <div class="metric">
-            <div class="value" id="countValue">-</div>
-            <div class="label">Detections</div>
-          </div>
-        </div>
-        <div id="urgencyText" style="font-size:0.85rem; color:var(--text-dim); margin-bottom:16px;"></div>
-
-        <div class="diag-list" id="diagChips"></div>
-
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="causes">Root Causes</button>
-          <button class="tab-btn" data-tab="prevention">Prevention</button>
-          <button class="tab-btn" data-tab="repair">Repair Plan</button>
-          <button class="tab-btn" data-tab="consequences">If Untreated</button>
-        </div>
-        <div class="tab-panel active" id="tab-causes"><ul id="list-causes"></ul></div>
-        <div class="tab-panel" id="tab-prevention"><ul id="list-prevention"></ul></div>
-        <div class="tab-panel" id="tab-repair"><ul id="list-repair"></ul></div>
-        <div class="tab-panel" id="tab-consequences"><ul id="list-consequences"></ul></div>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer>AI Based Structural Crack and Defect Detection · Saintgits College of Engineering, Dept. of CE</footer>
+<div class="result-block" id="result-block" style="display:none">
+  <div id="summary"></div>
+  <div id="det-list"></div>
+</div>
 
 <script>
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const previewWrap = document.getElementById('previewWrap');
-const previewImg = document.getElementById('previewImg');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const resetBtn = document.getElementById('resetBtn');
-const statusEl = document.getElementById('status');
-const results = document.getElementById('results');
+async function analyze() {
+  const file = document.getElementById('file-input').files[0];
+  if (!file) { alert('Please select an image first.'); return; }
 
-let selectedFile = null;
+  document.getElementById('status').textContent = 'Analyzing...';
+  document.getElementById('error').textContent  = '';
+  document.getElementById('result-block').style.display = 'none';
+  document.getElementById('result-img').style.display   = 'none';
 
-dropzone.addEventListener('click', () => fileInput.click());
-
-dropzone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dropzone.classList.add('dragover');
-});
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
-
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) handleFile(fileInput.files[0]);
-});
-
-function handleFile(file) {
-  if (!file.type.startsWith('image/')) {
-    statusEl.textContent = 'Please select a valid image file.';
-    return;
-  }
-  selectedFile = file;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    previewImg.src = e.target.result;
-    previewWrap.style.display = 'block';
-    dropzone.style.display = 'none';
-    resetBtn.style.display = 'inline-block';
-    analyzeBtn.disabled = false;
-    statusEl.textContent = '';
-    results.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
-}
-
-resetBtn.addEventListener('click', () => {
-  selectedFile = null;
-  fileInput.value = '';
-  previewWrap.style.display = 'none';
-  dropzone.style.display = 'block';
-  resetBtn.style.display = 'none';
-  analyzeBtn.disabled = true;
-  results.style.display = 'none';
-  statusEl.textContent = '';
-});
-
-analyzeBtn.addEventListener('click', async () => {
-  if (!selectedFile) return;
-  analyzeBtn.disabled = true;
-  statusEl.textContent = 'Analyzing image…';
-
-  const formData = new FormData();
-  formData.append('image', selectedFile);
+  const form = new FormData();
+  form.append('image', file);
 
   try {
-    const res = await fetch('/analyze', { method: 'POST', body: formData });
+    const res  = await fetch('/analyze', { method: 'POST', body: form });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Analysis failed.');
-    renderResults(data);
-    statusEl.textContent = '';
-  } catch (err) {
-    statusEl.textContent = err.message;
-  } finally {
-    analyzeBtn.disabled = false;
+
+    document.getElementById('status').textContent = '';
+
+    if (data.error) {
+      document.getElementById('error').textContent = 'Error: ' + data.error;
+      return;
+    }
+
+    // Show annotated image
+    const img = document.getElementById('result-img');
+    img.src = 'data:image/jpeg;base64,' + data.annotated_image;
+    img.style.display = 'block';
+
+    // Summary
+    document.getElementById('summary').innerHTML =
+      '<p><strong>Defects found:</strong> ' + data.num_detections +
+      ' &nbsp;|&nbsp; <strong>Overall severity:</strong> ' + data.overall_severity + '</p>';
+
+    // Detection cards
+    const listEl = document.getElementById('det-list');
+    listEl.innerHTML = '';
+
+    if (!data.detections || data.detections.length === 0) {
+      listEl.innerHTML = '<p class="no-det">No defects detected in this image.</p>';
+    } else {
+      data.detections.forEach(function(det) {
+        var causes = (det.causes       || []).map(function(c){ return '<li>'+c+'</li>'; }).join('');
+        var prev   = (det.prevention   || []).map(function(p){ return '<li>'+p+'</li>'; }).join('');
+        var repair = (det.repair       || []).map(function(r){ return '<li>'+r+'</li>'; }).join('');
+        var cons   = (det.consequences || []).map(function(c){ return '<li>'+c+'</li>'; }).join('');
+
+        listEl.innerHTML +=
+          '<div class="det">' +
+            '<h3>' + (det.full_name || det.class) + '</h3>' +
+            '<div class="conf">Confidence: ' + det.confidence + '%</div>' +
+            '<div class="sev ' + det.severity + '">Severity: ' + det.severity + '</div>' +
+            '<hr>' +
+            '<h4>Causes</h4><ul>' + causes + '</ul>' +
+            '<h4>Prevention</h4><ul>' + prev + '</ul>' +
+            '<h4>Repair</h4><ul>' + repair + '</ul>' +
+            '<h4>Consequences if untreated</h4><ul>' + cons + '</ul>' +
+            '<div class="urgency">&#9200; ' + det.urgency + '</div>' +
+          '</div>';
+      });
+    }
+
+    document.getElementById('result-block').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('status').textContent = '';
+    document.getElementById('error').textContent  = 'Failed — make sure Flask is running: python app.py';
   }
-});
-
-function renderResults(data) {
-  results.style.display = 'block';
-
-  const modeBadge = document.getElementById('modeBadge');
-  modeBadge.textContent = data.mode === 'model' ? 'Trained Model' : 'Demo Mode (Heuristic)';
-  modeBadge.className = 'badge ' + (data.mode === 'model' ? 'model' : 'demo');
-
-  document.getElementById('annotatedImg').src = 'data:image/jpeg;base64,' + data.annotated_image;
-
-  const sev = data.severity;
-  document.getElementById('scoreValue').textContent = sev.score;
-  document.getElementById('categoryValue').textContent = sev.category;
-  document.getElementById('countValue').textContent = data.num_detections;
-  document.getElementById('urgencyText').textContent = sev.urgency;
-
-  const scoreMetric = document.getElementById('scoreMetric');
-  const categoryMetric = document.getElementById('categoryMetric');
-  scoreMetric.className = 'metric';
-  categoryMetric.className = 'metric';
-  if (sev.category === 'Critical') { scoreMetric.classList.add('critical'); categoryMetric.classList.add('critical'); }
-  else if (sev.category === 'High') { scoreMetric.classList.add('high'); categoryMetric.classList.add('high'); }
-
-  const chips = document.getElementById('diagChips');
-  chips.innerHTML = '';
-  (data.report.diagnosis || []).forEach((d) => {
-    const chip = document.createElement('span');
-    chip.className = 'diag-chip';
-    chip.textContent = d;
-    chips.appendChild(chip);
-  });
-
-  fillList('list-causes', data.report.causes);
-  fillList('list-prevention', data.report.prevention);
-  fillList('list-repair', data.report.repair);
-  fillList('list-consequences', data.report.consequences);
 }
-
-function fillList(id, items) {
-  const ul = document.getElementById(id);
-  ul.innerHTML = '';
-  if (!items || !items.length) {
-    const li = document.createElement('li');
-    li.textContent = 'No information available.';
-    ul.appendChild(li);
-    return;
-  }
-  items.forEach((text) => {
-    const li = document.createElement('li');
-    li.textContent = text;
-    ul.appendChild(li);
-  });
-}
-
-document.querySelectorAll('.tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-  });
-});
 </script>
+
 </body>
 </html>
