@@ -6,117 +6,305 @@
 <title>AI Crack Detection</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #0a0a0a; color: #e0e0e0;
-    max-width: 820px; margin: 0 auto; padding: 30px 20px 60px; }
 
-  h1 { font-size: 22px; color: #39FF14; margin-bottom: 6px;
-    text-shadow: 0 0 10px rgba(57,255,20,0.4); }
-  p.sub { color: #666; font-size: 14px; margin-bottom: 28px; }
+  :root {
+    --bg: #0a0a0a; --bg2: #111; --bg3: #1a2e1a;
+    --accent: #39FF14; --accent2: rgba(57,255,20,0.15);
+    --text: #e0e0e0; --text2: #888; --text3: #aaa;
+    --border: #1a2e1a; --border2: #39FF14;
+    --crit: #ff4444; --high: #ff8800; --med: #ccaa00; --low: #39FF14;
+  }
+  .light {
+    --bg: #f5f5f0; --bg2: #ffffff; --bg3: #e8f0e8;
+    --accent: #2a8a00; --accent2: rgba(42,138,0,0.1);
+    --text: #111; --text2: #555; --text3: #444;
+    --border: #ccc; --border2: #2a8a00;
+    --crit: #cc0000; --high: #cc6600; --med: #997700; --low: #2a8a00;
+  }
 
-  /* upload area */
-  .upload-box { border: 1px solid #39FF14; border-radius: 4px;
-    padding: 28px 20px; text-align: center; background: #111;
+  body { font-family: Arial, sans-serif; background: var(--bg); color: var(--text);
+    max-width: 860px; margin: 0 auto; padding: 0 20px 60px; transition: background 0.2s, color 0.2s; }
+
+  /* NAV */
+  nav { display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+  .nav-left h1 { font-size: 20px; color: var(--accent); }
+  .nav-left p  { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .nav-right   { display: flex; align-items: center; gap: 16px; }
+
+  /* clock */
+  #clock { font-size: 13px; color: var(--accent); font-family: monospace;
+    border: 1px solid var(--border2); padding: 4px 10px; border-radius: 3px; }
+
+  /* mode toggle */
+  .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12px; color: var(--text2); user-select: none; }
+  .toggle-track { width: 36px; height: 18px; background: var(--border);
+    border-radius: 9px; position: relative; transition: background 0.2s;
+    border: 1px solid var(--border2); }
+  .toggle-thumb { width: 12px; height: 12px; background: var(--accent);
+    border-radius: 50%; position: absolute; top: 2px; left: 2px;
+    transition: left 0.2s; }
+  .light .toggle-thumb { left: 20px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .tab  { padding: 9px 20px; font-size: 13px; cursor: pointer; background: none;
+    border: none; color: var(--text2); border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: color 0.15s; font-family: Arial, sans-serif; }
+  .tab:hover  { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  /* upload */
+  .upload-box { border: 1px solid var(--border2); border-radius: 4px;
+    padding: 32px 20px; text-align: center; background: var(--bg2);
     margin-bottom: 16px; cursor: pointer; transition: background 0.2s; }
-  .upload-box:hover { background: #141a11; }
-  .upload-box p { color: #666; font-size: 13px; margin-top: 8px; }
+  .upload-box:hover { background: var(--accent2); }
+  .upload-box p { color: var(--text2); font-size: 13px; margin-top: 8px; }
   input[type=file] { display: none; }
 
-  button { padding: 9px 24px; background: #39FF14; color: #0a0a0a;
-    border: none; cursor: pointer; font-size: 14px; font-weight: bold;
-    border-radius: 3px; transition: opacity 0.15s; }
-  button:hover { opacity: 0.85; }
+  button.btn { padding: 9px 24px; background: var(--accent); color: var(--bg);
+    border: none; cursor: pointer; font-size: 13px; font-weight: bold;
+    border-radius: 3px; transition: opacity 0.15s; font-family: Arial, sans-serif; }
+  button.btn:hover { opacity: 0.85; }
 
-  #status { font-size: 13px; color: #39FF14; margin-top: 10px; }
-  #error  { color: #ff4444; margin-top: 10px; font-size: 13px; }
+  #status { font-size: 13px; color: var(--accent); margin-top: 10px; }
+  #error  { color: var(--crit); margin-top: 10px; font-size: 13px; }
 
-  /* result image */
   img#result-img { max-width: 100%; margin-top: 24px; display: block;
-    border: 1px solid #39FF14; border-radius: 4px; }
+    border: 1px solid var(--border2); border-radius: 4px; }
 
-  /* result block */
-  .result-block { margin-top: 24px; border-top: 1px solid #39FF14; padding-top: 20px; }
-  .summary { font-size: 14px; color: #aaa; margin-bottom: 16px; }
-  .summary strong { color: #39FF14; }
+  .result-block { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px; }
+  .summary { font-size: 14px; color: var(--text2); margin-bottom: 16px; }
+  .summary strong { color: var(--accent); }
 
-  /* detection card */
-  .det { border: 1px solid #1a2e1a; border-radius: 4px; padding: 16px;
-    margin-bottom: 14px; background: #111; }
-  .det h3 { font-size: 15px; color: #39FF14; margin-bottom: 4px; }
-  .det .conf { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .det { border: 1px solid var(--border); border-radius: 4px;
+    padding: 16px; margin-bottom: 14px; background: var(--bg2); }
+  .det h3 { font-size: 15px; color: var(--accent); margin-bottom: 4px; }
+  .det .conf { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
   .det .sev { font-size: 13px; font-weight: bold; margin-bottom: 12px; }
-  .det .sev.Critical { color: #ff4444; }
-  .det .sev.High     { color: #ff8800; }
-  .det .sev.Medium   { color: #ccaa00; }
-  .det .sev.Low      { color: #39FF14; }
-  .det h4 { font-size: 12px; color: #39FF14; margin: 12px 0 4px;
+  .det .sev.Critical { color: var(--crit); }
+  .det .sev.High     { color: var(--high); }
+  .det .sev.Medium   { color: var(--med); }
+  .det .sev.Low      { color: var(--low); }
+  .det h4 { font-size: 11px; color: var(--accent); margin: 12px 0 4px;
     text-transform: uppercase; letter-spacing: 0.05em; }
   .det ul { margin: 0 0 0 16px; padding: 0; font-size: 13px;
-    color: #aaa; line-height: 1.75; }
+    color: var(--text3); line-height: 1.75; }
   .urgency { margin-top: 12px; font-size: 12px; font-weight: bold;
-    color: #ff8800; border-top: 1px solid #1a2e1a; padding-top: 10px; }
+    color: var(--high); border-top: 1px solid var(--border); padding-top: 10px; }
+  .no-det { font-size: 14px; color: var(--accent); margin-top: 12px; }
+  hr.thin { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 
-  .no-det { font-size: 14px; color: #39FF14; margin-top: 12px; }
-
-  hr { border: none; border-top: 1px solid #1a2e1a; margin: 10px 0; }
+  /* about section */
+  .about-section { margin-bottom: 28px; }
+  .about-section h2 { font-size: 14px; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.07em; margin-bottom: 12px; border-bottom: 1px solid var(--border);
+    padding-bottom: 6px; }
+  .about-section p, .about-section li { font-size: 13px; color: var(--text3); line-height: 1.75; }
+  .about-section ul { margin-left: 16px; }
+  .paper { margin-bottom: 14px; padding: 12px 14px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 4px; }
+  .paper .ref  { font-size: 13px; font-weight: bold; color: var(--text); margin-bottom: 3px; }
+  .paper .meta { font-size: 12px; color: var(--text2); margin-bottom: 3px; }
+  .paper .desc { font-size: 12px; color: var(--text3); line-height: 1.6; }
+  .dataset { margin-bottom: 12px; padding: 12px 14px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 4px; }
+  .dataset .name { font-size: 13px; font-weight: bold; color: var(--accent); margin-bottom: 3px; }
+  .dataset .info { font-size: 12px; color: var(--text3); line-height: 1.6; }
+  .dataset a { color: var(--accent); font-size: 12px; }
+  .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .team-item { background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px 12px; font-size: 13px; color: var(--text3); }
+  .team-item strong { color: var(--text); display: block; margin-bottom: 2px; }
 </style>
 </head>
 <body>
 
-<h1>AI Crack &amp; Defect Detection</h1>
-<p class="sub">Upload a road surface photo to detect potholes, alligator cracks, longitudinal and transverse cracks.</p>
+<nav>
+  <div class="nav-left">
+    <h1>AI Crack Detection</h1>
+    <p>Saintgits College of Engineering — 2024-25</p>
+  </div>
+  <div class="nav-right">
+    <div id="clock">00:00:00 IST</div>
+    <div class="toggle" onclick="toggleMode()">
+      <span id="mode-label">Dark</span>
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+    </div>
+  </div>
+</nav>
 
-<div class="upload-box" onclick="document.getElementById('file-input').click()">
-  <button onclick="event.stopPropagation(); document.getElementById('file-input').click()">
-    Choose image
-  </button>
-  <p>or click anywhere here to upload · JPG, PNG, WEBP</p>
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="showTab('analyze')">Analyze</button>
+  <button class="tab"        onclick="showTab('about')">About</button>
 </div>
-<input type="file" id="file-input" accept="image/*" onchange="analyze()">
 
-<div id="status"></div>
-<div id="error"></div>
-
-<img id="result-img" style="display:none" alt="detection result">
-
-<div class="result-block" id="result-block" style="display:none">
-  <div class="summary" id="summary"></div>
-  <div id="det-list"></div>
+<!-- ANALYZE PANE -->
+<div class="pane active" id="pane-analyze">
+  <div class="upload-box" onclick="document.getElementById('file-input').click()">
+    <button class="btn" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
+      Choose image
+    </button>
+    <p>or click anywhere here · JPG, PNG, WEBP</p>
+  </div>
+  <input type="file" id="file-input" accept="image/*" onchange="analyze()">
+  <div id="status"></div>
+  <div id="error"></div>
+  <img id="result-img" style="display:none" alt="detection result">
+  <div class="result-block" id="result-block" style="display:none">
+    <div class="summary" id="summary"></div>
+    <div id="det-list"></div>
+  </div>
 </div>
+
+<!-- ABOUT PANE -->
+<div class="pane" id="pane-about">
+
+  <div class="about-section">
+    <h2>Project</h2>
+    <p>AI-Based Structural Crack and Defect Detection System. Detects potholes, alligator cracks, longitudinal cracks, and transverse cracks from road surface images using two YOLOv8 models. Returns root causes, prevention measures, repair steps, and severity rating.</p>
+  </div>
+
+  <div class="about-section">
+    <h2>Team</h2>
+    <div class="team-grid">
+      <div class="team-item"><strong>Safna Firoz</strong>MGP24RA085</div>
+      <div class="team-item"><strong>Jisa Asha Joseph</strong>MGP24RA056</div>
+      <div class="team-item"><strong>Ron Geo Roy</strong>MGP24EC058</div>
+      <div class="team-item"><strong>Vaishnav Shibu</strong>MGP24CE053</div>
+    </div>
+    <p style="margin-top:10px"><strong style="color:var(--text)">Supervisor:</strong> Afia S. Hameed — Assistant Professor, Dept. of CE</p>
+  </div>
+
+  <div class="about-section">
+    <h2>Datasets used</h2>
+    <div class="dataset">
+      <div class="name">Dataset 1 — Road Crack Detection and Classification</div>
+      <div class="info">
+        Source: Roboflow Universe — Own Data Label (2023) · License: CC BY 4.0<br>
+        Classes: Crack-alligator, Crack-long, Crack-trans, pothole<br>
+        Used to train: crack_model2.pt (multi-class crack detection)<br>
+        <a href="https://universe.roboflow.com/own-data-label/road-crack-detection-and-classification" target="_blank">View dataset ↗</a>
+      </div>
+    </div>
+    <div class="dataset">
+      <div class="name">Dataset 2 — Pothole Detection</div>
+      <div class="info">
+        Source: Roboflow Universe — YOLOWorkshop · License: CC BY 4.0<br>
+        Classes: pothole<br>
+        Used to train: crack_model.pt (dedicated pothole detection)<br>
+        <a href="https://universe.roboflow.com/yoloworkshop-ap8yq/pothole-k1qqx/dataset/1" target="_blank">View dataset ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="about-section">
+    <h2>Research papers reviewed</h2>
+
+    <div class="paper">
+      <div class="ref">[1] Maeda et al. (2018) — Road Damage Detection Using Deep Neural Networks</div>
+      <div class="meta">Computer-Aided Civil and Infrastructure Engineering, Vol. 33 · arXiv:1801.09454</div>
+      <div class="desc">Introduced the Road Damage Dataset (RDD2018) with 9,053 images. Used SSD framework for real-time detection. Foundational paper for road crack detection benchmarks.</div>
+    </div>
+
+    <div class="paper">
+      <div class="ref">[2] Arya et al. (2022) — RDD2022: A Multi-National Image Dataset for Road Damage Detection</div>
+      <div class="meta">arXiv:2209.08538 · Geoscience Data Journal, 2024</div>
+      <div class="desc">Introduced RDD2022 — 47,420 road images from six countries including India, with the exact four damage types this project detects. Primary dataset reference.</div>
+    </div>
+
+    <div class="paper">
+      <div class="ref">[3] Zuo et al. (2025) — Intelligent Road Crack Detection Based on Improved YOLOv8</div>
+      <div class="meta">arXiv:2504.13208 · April 2025</div>
+      <div class="desc">Enhanced YOLOv8 with ECA and CBAM attention mechanisms for road crack detection. Directly justifies our choice of YOLOv8 as the detection backbone.</div>
+    </div>
+
+    <div class="paper">
+      <div class="ref">[4] Dharneeshkar et al. (2020) — Detection of Potholes in Indian Roads Using YOLO</div>
+      <div class="meta">ICICT 2020 · IEEE</div>
+      <div class="desc">Applied YOLO to pothole detection specifically on Indian roads. Supports use of YOLO-based detection for this project targeting Kerala road conditions.</div>
+    </div>
+
+    <div class="paper">
+      <div class="ref">[5] Sandler et al. (2018) — MobileNetV2: Inverted Residuals and Linear Bottlenecks</div>
+      <div class="meta">CVPR 2018 · IEEE</div>
+      <div class="desc">Introduced MobileNetV2 lightweight CNN architecture. Used as secondary classification backbone in the Colab training notebook.</div>
+    </div>
+
+  </div>
+
+  <div class="about-section">
+    <h2>Tech stack</h2>
+    <ul>
+      <li>Model: YOLOv8n — Ultralytics</li>
+      <li>Backend: Flask 2.3 (Python)</li>
+      <li>Image processing: OpenCV 4.8</li>
+      <li>Training: Google Colab — T4 GPU</li>
+      <li>Frontend: Plain HTML + CSS + JavaScript</li>
+      <li>Repository: github.com/[team]/ai-crack-detection</li>
+    </ul>
+  </div>
+
+</div><!-- /about pane -->
 
 <script>
+// ── clock ──────────────────────────────────────────────────
+function updateClock() {
+  var now = new Date();
+  var ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  var h = String(ist.getHours()).padStart(2,'0');
+  var m = String(ist.getMinutes()).padStart(2,'0');
+  var s = String(ist.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent = h + ':' + m + ':' + s + ' IST';
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── light/dark toggle ──────────────────────────────────────
+function toggleMode() {
+  document.body.classList.toggle('light');
+  var isLight = document.body.classList.contains('light');
+  document.getElementById('mode-label').textContent = isLight ? 'Light' : 'Dark';
+}
+
+// ── tabs ───────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.pane').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('pane-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── analyze ────────────────────────────────────────────────
 async function analyze() {
   var file = document.getElementById('file-input').files[0];
   if (!file) return;
-
   document.getElementById('status').textContent = 'Analyzing...';
   document.getElementById('error').textContent  = '';
   document.getElementById('result-block').style.display = 'none';
   document.getElementById('result-img').style.display   = 'none';
-
   var form = new FormData();
   form.append('image', file);
-
   try {
     var res  = await fetch('/analyze', { method: 'POST', body: form });
     var data = await res.json();
     document.getElementById('status').textContent = '';
-
     if (data.error) {
       document.getElementById('error').textContent = 'Error: ' + data.error;
       return;
     }
-
     var img = document.getElementById('result-img');
     img.src = 'data:image/jpeg;base64,' + data.annotated_image;
     img.style.display = 'block';
-
     document.getElementById('summary').innerHTML =
       '<strong>Defects found:</strong> ' + data.num_detections +
       ' &nbsp;|&nbsp; <strong>Overall severity:</strong> ' + data.overall_severity;
-
     var listEl = document.getElementById('det-list');
     listEl.innerHTML = '';
-
     if (!data.detections || data.detections.length === 0) {
       listEl.innerHTML = '<p class="no-det">No defects detected.</p>';
     } else {
@@ -125,13 +313,12 @@ async function analyze() {
         var prev   = (det.prevention   || []).map(function(p){ return '<li>'+p+'</li>'; }).join('');
         var repair = (det.repair       || []).map(function(r){ return '<li>'+r+'</li>'; }).join('');
         var cons   = (det.consequences || []).map(function(c){ return '<li>'+c+'</li>'; }).join('');
-
         listEl.innerHTML +=
           '<div class="det">' +
             '<h3>' + (det.full_name || det.class) + '</h3>' +
             '<div class="conf">Confidence: ' + det.confidence + '%</div>' +
             '<div class="sev ' + det.severity + '">Severity: ' + det.severity + '</div>' +
-            '<hr>' +
+            '<hr class="thin">' +
             '<h4>Causes</h4><ul>' + causes + '</ul>' +
             '<h4>Prevention</h4><ul>' + prev + '</ul>' +
             '<h4>Repair</h4><ul>' + repair + '</ul>' +
@@ -140,15 +327,12 @@ async function analyze() {
           '</div>';
       });
     }
-
     document.getElementById('result-block').style.display = 'block';
-
   } catch(e) {
     document.getElementById('status').textContent = '';
     document.getElementById('error').textContent = 'Failed — make sure Flask is running: python app.py';
   }
 }
 </script>
-
 </body>
 </html>
