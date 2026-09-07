@@ -5,65 +5,100 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Crack Detection</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #fff; color: #000; }
-  h1 { font-size: 22px; margin-bottom: 6px; }
-  p.sub { color: #555; font-size: 14px; margin-bottom: 24px; }
-  input[type=file] { display: block; margin-bottom: 12px; }
-  button { padding: 8px 20px; background: #000; color: #fff; border: none; cursor: pointer; font-size: 14px; }
-  button:hover { background: #333; }
-  img { max-width: 100%; margin-top: 20px; display: block; border: 1px solid #ccc; }
-  .result-block { margin-top: 24px; border-top: 2px solid #000; padding-top: 16px; }
-  .det { border: 1px solid #ccc; padding: 14px; margin-bottom: 14px; }
-  .det h3 { margin: 0 0 6px; font-size: 16px; }
-  .det .conf { font-size: 13px; color: #555; margin-bottom: 6px; }
-  .det .sev { font-weight: bold; font-size: 13px; margin-bottom: 10px; }
-  .det .sev.Critical { color: #cc0000; }
-  .det .sev.High     { color: #cc6600; }
-  .det .sev.Medium   { color: #888800; }
-  .det .sev.Low      { color: #006600; }
-  .det h4 { margin: 10px 0 4px; font-size: 13px; }
-  .det ul { margin: 0 0 0 18px; padding: 0; font-size: 13px; line-height: 1.7; }
-  .urgency { margin-top: 10px; font-size: 13px; font-weight: bold; }
-  #status { font-size: 13px; color: #555; margin-top: 8px; }
-  #error  { color: red; margin-top: 10px; font-size: 14px; }
-  .no-det { font-size: 14px; color: green; margin-top: 16px; }
-  hr { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #0a0a0a; color: #e0e0e0;
+    max-width: 820px; margin: 0 auto; padding: 30px 20px 60px; }
+
+  h1 { font-size: 22px; color: #39FF14; margin-bottom: 6px;
+    text-shadow: 0 0 10px rgba(57,255,20,0.4); }
+  p.sub { color: #666; font-size: 14px; margin-bottom: 28px; }
+
+  /* upload area */
+  .upload-box { border: 1px solid #39FF14; border-radius: 4px;
+    padding: 28px 20px; text-align: center; background: #111;
+    margin-bottom: 16px; cursor: pointer; transition: background 0.2s; }
+  .upload-box:hover { background: #141a11; }
+  .upload-box p { color: #666; font-size: 13px; margin-top: 8px; }
+  input[type=file] { display: none; }
+
+  button { padding: 9px 24px; background: #39FF14; color: #0a0a0a;
+    border: none; cursor: pointer; font-size: 14px; font-weight: bold;
+    border-radius: 3px; transition: opacity 0.15s; }
+  button:hover { opacity: 0.85; }
+
+  #status { font-size: 13px; color: #39FF14; margin-top: 10px; }
+  #error  { color: #ff4444; margin-top: 10px; font-size: 13px; }
+
+  /* result image */
+  img#result-img { max-width: 100%; margin-top: 24px; display: block;
+    border: 1px solid #39FF14; border-radius: 4px; }
+
+  /* result block */
+  .result-block { margin-top: 24px; border-top: 1px solid #39FF14; padding-top: 20px; }
+  .summary { font-size: 14px; color: #aaa; margin-bottom: 16px; }
+  .summary strong { color: #39FF14; }
+
+  /* detection card */
+  .det { border: 1px solid #1a2e1a; border-radius: 4px; padding: 16px;
+    margin-bottom: 14px; background: #111; }
+  .det h3 { font-size: 15px; color: #39FF14; margin-bottom: 4px; }
+  .det .conf { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .det .sev { font-size: 13px; font-weight: bold; margin-bottom: 12px; }
+  .det .sev.Critical { color: #ff4444; }
+  .det .sev.High     { color: #ff8800; }
+  .det .sev.Medium   { color: #ccaa00; }
+  .det .sev.Low      { color: #39FF14; }
+  .det h4 { font-size: 12px; color: #39FF14; margin: 12px 0 4px;
+    text-transform: uppercase; letter-spacing: 0.05em; }
+  .det ul { margin: 0 0 0 16px; padding: 0; font-size: 13px;
+    color: #aaa; line-height: 1.75; }
+  .urgency { margin-top: 12px; font-size: 12px; font-weight: bold;
+    color: #ff8800; border-top: 1px solid #1a2e1a; padding-top: 10px; }
+
+  .no-det { font-size: 14px; color: #39FF14; margin-top: 12px; }
+
+  hr { border: none; border-top: 1px solid #1a2e1a; margin: 10px 0; }
 </style>
 </head>
 <body>
 
 <h1>AI Crack &amp; Defect Detection</h1>
-<p class="sub">Upload a road surface photo. The AI detects potholes, alligator cracks, longitudinal and transverse cracks.</p>
+<p class="sub">Upload a road surface photo to detect potholes, alligator cracks, longitudinal and transverse cracks.</p>
 
-<input type="file" id="file-input" accept="image/*">
-<button onclick="analyze()">Analyze</button>
+<div class="upload-box" onclick="document.getElementById('file-input').click()">
+  <button onclick="event.stopPropagation(); document.getElementById('file-input').click()">
+    Choose image
+  </button>
+  <p>or click anywhere here to upload · JPG, PNG, WEBP</p>
+</div>
+<input type="file" id="file-input" accept="image/*" onchange="analyze()">
+
 <div id="status"></div>
 <div id="error"></div>
 
 <img id="result-img" style="display:none" alt="detection result">
 
 <div class="result-block" id="result-block" style="display:none">
-  <div id="summary"></div>
+  <div class="summary" id="summary"></div>
   <div id="det-list"></div>
 </div>
 
 <script>
 async function analyze() {
-  const file = document.getElementById('file-input').files[0];
-  if (!file) { alert('Please select an image first.'); return; }
+  var file = document.getElementById('file-input').files[0];
+  if (!file) return;
 
   document.getElementById('status').textContent = 'Analyzing...';
   document.getElementById('error').textContent  = '';
   document.getElementById('result-block').style.display = 'none';
   document.getElementById('result-img').style.display   = 'none';
 
-  const form = new FormData();
+  var form = new FormData();
   form.append('image', file);
 
   try {
-    const res  = await fetch('/analyze', { method: 'POST', body: form });
-    const data = await res.json();
-
+    var res  = await fetch('/analyze', { method: 'POST', body: form });
+    var data = await res.json();
     document.getElementById('status').textContent = '';
 
     if (data.error) {
@@ -71,22 +106,19 @@ async function analyze() {
       return;
     }
 
-    // Show annotated image
-    const img = document.getElementById('result-img');
+    var img = document.getElementById('result-img');
     img.src = 'data:image/jpeg;base64,' + data.annotated_image;
     img.style.display = 'block';
 
-    // Summary
     document.getElementById('summary').innerHTML =
-      '<p><strong>Defects found:</strong> ' + data.num_detections +
-      ' &nbsp;|&nbsp; <strong>Overall severity:</strong> ' + data.overall_severity + '</p>';
+      '<strong>Defects found:</strong> ' + data.num_detections +
+      ' &nbsp;|&nbsp; <strong>Overall severity:</strong> ' + data.overall_severity;
 
-    // Detection cards
-    const listEl = document.getElementById('det-list');
+    var listEl = document.getElementById('det-list');
     listEl.innerHTML = '';
 
     if (!data.detections || data.detections.length === 0) {
-      listEl.innerHTML = '<p class="no-det">No defects detected in this image.</p>';
+      listEl.innerHTML = '<p class="no-det">No defects detected.</p>';
     } else {
       data.detections.forEach(function(det) {
         var causes = (det.causes       || []).map(function(c){ return '<li>'+c+'</li>'; }).join('');
@@ -113,7 +145,7 @@ async function analyze() {
 
   } catch(e) {
     document.getElementById('status').textContent = '';
-    document.getElementById('error').textContent  = 'Failed — make sure Flask is running: python app.py';
+    document.getElementById('error').textContent = 'Failed — make sure Flask is running: python app.py';
   }
 }
 </script>
