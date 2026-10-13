@@ -1,7 +1,9 @@
 # AI-Based Structural Crack and Defect Detection
 
-B.Tech Third Year Project — Saintgits College of Engineering (2024-25)
+B.Tech Third Year Project — Saintgits College of Engineering (2024-25)  
 Department of Civil Engineering
+
+🌐 **Live Web Application:** [https://ai-crack-detection-beta.vercel.app/](https://ai-crack-detection-beta.vercel.app/)
 
 ## Team Members
 - Safna Firoz (MGP24RA085)
@@ -12,8 +14,10 @@ Department of Civil Engineering
 ## Supervisor
 Afia S. Hameed — Assistant Professor, Dept. of CE
 
-## How to run
-1. Install requirements: pip install -r requirements.txt
-2. Place crack_model.pt in this folder (from Colab training)
-3. Run: python app.py
-4. Open: http://localhost:5000
+---
+
+## How to use the Live App
+You don't need to install anything to test the models. 
+1. Visit the [Live Web App](https://ai-crack-detection-beta.vercel.app/).
+2. Upload an image of a road surface (JPG, PNG, WEBP).
+3. The system will automatically run inference and return the defect types, severity, causes, and repair recommendations.
