@@ -1,9 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-torchvision
 flask
 gunicorn
 opencv-python-headless
 numpy
 Pillow
-ultralytics
+onnxruntime-headless
